@@ -1,7 +1,5 @@
 {
   "compilerOptions": {
-    "useDefineForClassFields": true,
-
     /* Bundler mode */
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -10,7 +8,6 @@
     "jsx": "react-jsx",
 
     /* Linting */
-    "strict": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
