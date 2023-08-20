@@ -162,6 +162,7 @@ async function main() {
     let leftHand: WebXRHand;
     let rightHand: WebXRHand;
     let initialRightHandWristPosition: Vector3;
+    let initialPersonLeftHandWristPosition: Vector3;
 
     // @ts-ignore
     await window.Ammo().catch((err) => alert(err));
@@ -182,14 +183,25 @@ async function main() {
         if (handedness === 'none') return;
         if (handedness === 'left') {
             leftHand = newHand;
+            fromBabylonObservable(scene.onBeforeRenderObservable)
+                .pipe(
+                    filter(() => {
+                        return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
+                    }),
+                    map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
+                    take(1)
+                )
+                .subscribe((v) => {
+                    initialPersonLeftHandWristPosition = v.clone();
+                });
         } else {
             rightHand = newHand;
             fromBabylonObservable(scene.onBeforeRenderObservable)
                 .pipe(
                     filter(() => {
-                        return rightHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
+                        return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
                     }),
-                    map(() => rightHand.getJointMesh(WebXRHandJoint.WRIST).position),
+                    map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
                     take(1)
                 )
                 .subscribe((v) => {
@@ -197,105 +209,188 @@ async function main() {
                 });
         }
     });
+    const gui = new dat.GUI();
+    gui.domElement.style.marginTop = '100px';
+    gui.domElement.style.marginRight = '300px';
+    gui.domElement.id = 'datGUI';
+
+    function setIk(
+        direction: 'left' | 'right',
+        options: {
+            rootMesh: Mesh;
+            head: TransformNode;
+        }
+    ) {
+        const { rootMesh, head } = options;
+        // TODO: camera的变化带来的变动需要处理
+        const xrHeader = xr.baseExperience.camera;
+        if (direction === 'right') {
+            const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.2 }, scene);
+            const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.12 }, scene);
+            poleTargetSmallBall.position = new Vector3(0.47, 1.36, -0.07);
+            let initialXrHeaderPosition: Vector3;
+            const initialRightHand = scene.getTransformNodeByName('RightHand')!;
+            const initialModalRightHandPosition = initialRightHand.getAbsolutePosition().clone();
+
+            bigBall.position = new Vector3(-0.45, 1.39, -0.27);
+            const initialBigBallPosition = bigBall.position.clone();
+            console.log('===============', bigBall.position);
+
+            const ikCtl = new BABYLON.BoneIKController(rootMesh, scene.getBoneByName('RightForeArm')!, {
+                targetMesh: bigBall,
+                poleTargetMesh: poleTargetSmallBall,
+                // poleTargetLocalOffset: new Vector3(1, 1, 1),
+                poleAngle: Math.PI * 0.9,
+                // bendAxis: BABYLON.Vector3.Right(),
+                maxAngle: Math.PI,
+                slerpAmount: 5,
+            });
+
+            gui.add(ikCtl, 'poleAngle', -Math.PI, Math.PI);
+            gui.add(ikCtl, 'maxAngle', 0, Math.PI);
+
+            // ikCtl.maxAngle = Math.PI;
+            const headerPosition = head.getAbsolutePosition();
+            scene.onBeforeRenderObservable.add(() => {
+                ikCtl.update();
+                if (xrHeader.position.x === 0 && xrHeader.position.y === 0 && xrHeader.position.z === 0) {
+                    return;
+                }
+                if (!initialXrHeaderPosition) {
+                    initialXrHeaderPosition = xrHeader.position.clone();
+                }
+                if (!initialRightHandWristPosition) return;
+
+                const headerOffset = xrHeader.position.x - initialXrHeaderPosition.x;
+                // head.position.x = initialModalHeaderPosition.x + headerOffset * ratio;
+
+                const rightHandWristPosition = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
+
+                /**
+                 * 1. 计算真人初始手腕位置与头部位置的距离，这是个总距离 lp
+                 * 2. 计算模型初始手腕位置与头部位置的距离，这是个总距离 lm
+                 * 3. 计算真人的实时手腕位置，这个是lpt
+                 * 4. 计算真人手腕移动距离，这个是lp - lpt，即lpDelta
+                 * 5. 计算模型手腕初始位置，这个是x1
+                 * 6. 计算模型手腕最终位置，这个是x2
+                 */
+
+                const lp = initialRightHandWristPosition.x - xrHeader.position.x;
+                // 对头部进行补偿，这是因为模型的头没变化。如果模型的头部实时变化，这里就不需要补偿了。但是如果直接修改headerPosition.x，那么模型的头部变化很奇怪。而且ratio也不能直接应用在头部x上，可能模型头部比例和头到手臂的比例不一样。
+                const lm = initialModalRightHandPosition.x - headerPosition.x; // - headerOffset * ratio);
+                const ratioX = Math.abs(lm / lp);
+                const ratioY = Math.abs((initialModalRightHandPosition.y - headerPosition.y) / (initialRightHandWristPosition.y - xrHeader.position.y));
+                const ratioZ = Math.abs((initialModalRightHandPosition.z - headerPosition.z) / (initialRightHandWristPosition.z - xrHeader.position.z));
+
+                const lpDeltaX = initialRightHandWristPosition.x - rightHandWristPosition.x; // + xrHeader.position.x - initialXrHeaderPosition.x;
+                const lpDeltaY = rightHandWristPosition.y - initialRightHandWristPosition.y; // y 轴方向相同，x轴相反
+                const lpDeltaZ = initialRightHandWristPosition.z - rightHandWristPosition.z;
+
+                // 因为向外伸展的时候是没办法获取到xr世界中手肘的位置的，所以ratio和向内不一样，0.9比较接近真实
+                bigBall.position.x = getAbsSmall(initialBigBallPosition.x + lpDeltaX * (lpDeltaX < 0 ? 0.9 : ratioX), initialModalRightHandPosition.x, initialXrHeaderPosition.x);
+                // bigBall.position.x = x2;
+                bigBall.position.y = initialBigBallPosition.y + lpDeltaY * 2;
+                bigBall.position.z = initialBigBallPosition.z + lpDeltaZ;
+            });
+        } else {
+            const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.1 }, scene);
+            const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.05 }, scene);
+            poleTargetSmallBall.position = new Vector3(-0.47, 1.36, -0.07);
+            let initialXrHeaderPosition: Vector3;
+            const initialModalHand = scene.getTransformNodeByName('LeftHand')!;
+            const initialModalRightHandPosition = initialModalHand.getAbsolutePosition().clone();
+
+            // @ts-ignore
+
+            // bigBall.position = scene.getBoneByName('LeftForeArm')!.getAbsolutePosition().clone();
+            // bigBall.position.x *= -1;
+            // bigBall.position.z = -0.27;
+            bigBall.position = new Vector3(0.45, 1.39, -0.27);
+
+            const initialBigBallPosition = bigBall.position.clone();
+
+            const ikCtl = new BABYLON.BoneIKController(rootMesh, scene.getBoneByName('LeftForeArm')!, {
+                targetMesh: bigBall,
+                poleTargetMesh: poleTargetSmallBall,
+                // poleTargetLocalOffset: new Vector3(1, 1, 1),
+                poleAngle: Math.PI * 0.9,
+                // bendAxis: BABYLON.Vector3.Right(),
+                maxAngle: Math.PI,
+            });
+
+            gui.add(ikCtl, 'poleAngle', -Math.PI, Math.PI);
+            gui.add(ikCtl, 'maxAngle', 0, Math.PI);
+            // gui.add(ikCtl, 'bendAxis.x', 0, 1);
+            // gui.add(ikCtl, 'bendAxis.y', 0, 1);
+            // gui.add(ikCtl, 'bendAxis.z', 0, 1);
+
+            // ikCtl.maxAngle = Math.PI;
+            const headerPosition = head.getAbsolutePosition();
+            scene.onBeforeRenderObservable.add(() => {
+                ikCtl.update();
+                return;
+                if (xrHeader.position.x === 0 && xrHeader.position.y === 0 && xrHeader.position.z === 0) {
+                    return;
+                }
+                if (!initialXrHeaderPosition) {
+                    initialXrHeaderPosition = xrHeader.position.clone();
+                }
+                if (!initialPersonLeftHandWristPosition) return;
+
+                const headerOffset = xrHeader.position.x - initialXrHeaderPosition.x;
+                // head.position.x = initialModalHeaderPosition.x + headerOffset * ratio;
+
+                const rightHandWristPosition = leftHand.getJointMesh(WebXRHandJoint.WRIST).position;
+
+                /**
+                 * 1. 计算真人初始手腕位置与头部位置的距离，这是个总距离 lp
+                 * 2. 计算模型初始手腕位置与头部位置的距离，这是个总距离 lm
+                 * 3. 计算真人的实时手腕位置，这个是lpt
+                 * 4. 计算真人手腕移动距离，这个是lp - lpt，即lpDelta
+                 * 5. 计算模型手腕初始位置，这个是x1
+                 * 6. 计算模型手腕最终位置，这个是x2
+                 */
+
+                const lp = initialPersonLeftHandWristPosition.x - xrHeader.position.x;
+                // 对头部进行补偿，这是因为模型的头没变化。如果模型的头部实时变化，这里就不需要补偿了。但是如果直接修改headerPosition.x，那么模型的头部变化很奇怪。而且ratio也不能直接应用在头部x上，可能模型头部比例和头到手臂的比例不一样。
+                const lm = initialModalRightHandPosition.x - headerPosition.x; // - headerOffset * ratio);
+                const ratioX = Math.abs(lm / lp);
+                const ratioY = Math.abs((initialModalRightHandPosition.y - headerPosition.y) / (initialPersonLeftHandWristPosition.y - xrHeader.position.y));
+                const ratioZ = Math.abs((initialModalRightHandPosition.z - headerPosition.z) / (initialPersonLeftHandWristPosition.z - xrHeader.position.z));
+
+                const lpDeltaX = initialPersonLeftHandWristPosition.x - rightHandWristPosition.x; // + xrHeader.position.x - initialXrHeaderPosition.x;
+                const lpDeltaY = rightHandWristPosition.y - initialPersonLeftHandWristPosition.y; // y 轴方向相同，x轴相反
+                const lpDeltaZ = initialPersonLeftHandWristPosition.z - rightHandWristPosition.z;
+
+                // 因为向外伸展的时候是没办法获取到xr世界中手肘的位置的，所以ratio和向内不一样，0.9比较接近真实
+                bigBall.position.x = getAbsSmall(initialBigBallPosition.x + lpDeltaX * (lpDeltaX < 0 ? 0.9 : ratioX), initialModalRightHandPosition.x, initialXrHeaderPosition.x);
+                // bigBall.position.x = x2;
+                bigBall.position.y = initialBigBallPosition.y + lpDeltaY * 2;
+                bigBall.position.z = initialBigBallPosition.z + lpDeltaZ;
+            });
+        }
+    }
 
     xr.baseExperience.sessionManager.onXRSessionEnded.add(() => {});
     SceneLoader.AppendAsync('./', 'K-00510.vrm', scene).then((scene: Scene) => {
-        const bone = scene.metadata.vrmManagers[0].humanoidBone;
-        // bone['rightHand'].rotationQuaternion = 0;
-        // bone['rightHand'].rotate(Axis.X, ToRadians(-90), Space.LOCAL);
-
-        const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('', { diameter: 0.12 }, scene);
-        const gui = new dat.GUI();
-        gui.domElement.style.marginTop = '100px';
-        gui.domElement.id = 'datGUI';
         const rootMesh = scene.getMeshByName('__root__')! as Mesh;
-        const bigBall = BABYLON.MeshBuilder.CreateSphere('', { diameter: 0.1 }, scene);
 
         // 手肘
-        const rightForeArm = scene.getTransformNodeByName('RightForeArm')!;
-        const initialModalForeArmPosition = rightForeArm.getAbsolutePosition().clone();
-        const initialRightHand = scene.getTransformNodeByName('RightHand')!;
-        const initialModalRightHandPosition = initialRightHand.getAbsolutePosition().clone();
+        // const initialRightHand = scene.getTransformNodeByName('RightHand')!;
+        // const initialModalRightHandPosition = initialRightHand.getAbsolutePosition().clone();
         // 头
         const head = scene.getTransformNodeByName('Head')!;
-        const modalHeight = scene.getBoneByName('Head')?.getAbsolutePosition().y;
-        console.log('模型高度', modalHeight, initialRightHand.getAbsolutePosition().y);
 
-        const xrHeader = xr.baseExperience.camera;
         let initialXrHeaderPosition: Vector3;
 
-        // bone.rightLowerArm.rotationQuaternion = Quaternion.FromEulerAngles(0, Math.PI / 2, 0);
-        // bone.leftLowerArm.rotationQuaternion = Quaternion.FromEulerAngles(0, -Math.PI / 2, 0);
-        // const pos = rightHandMesh.getAbsolutePosition();
-        // console.log('pos绝对位置：', pos, '相对位置：', rightHandMesh.position);
+        // setIk('right', {
+        //     rootMesh,
+        //     head,
+        // });
 
-        poleTargetSmallBall.position.x = 0.47;
-        poleTargetSmallBall.position.y = 1.36;
-        poleTargetSmallBall.position.z = -0.07;
-
-        bigBall.position = new Vector3(-0.45, 1.39, -0.27);
-        const initialBigBallPosition = bigBall.position.clone();
-
-        const ikCtl = new BABYLON.BoneIKController(rootMesh, scene.getBoneByName('RightForeArm')!, {
-            // targetMesh: rightHandMesh,
-            targetMesh: bigBall,
-            poleTargetMesh: poleTargetSmallBall,
-            poleAngle: Math.PI * 0.9,
-        });
-
-        gui.add(ikCtl, 'poleAngle', -Math.PI, Math.PI);
-        gui.add(ikCtl, 'maxAngle', 0, Math.PI);
-        ikCtl.maxAngle = Math.PI;
-        const headerPosition = head.getAbsolutePosition();
-        scene.onBeforeRenderObservable.add(() => {
-            ikCtl.update();
-            if (xrHeader.position.x === 0 && xrHeader.position.y === 0 && xrHeader.position.z === 0) {
-                return;
-            }
-            if (!initialXrHeaderPosition) {
-                initialXrHeaderPosition = xrHeader.position.clone();
-            }
-            if (!initialRightHandWristPosition) return;
-
-            const headerOffset = xrHeader.position.x - initialXrHeaderPosition.x;
-            // head.position.x = initialModalHeaderPosition.x + headerOffset * ratio;
-
-            const rightHandWristPosition = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
-
-            /**
-             * 1. 计算真人初始手腕位置与头部位置的距离，这是个总距离 lp
-             * 2. 计算模型初始手腕位置与头部位置的距离，这是个总距离 lm
-             * 3. 计算真人的实时手腕位置，这个是lpt
-             * 4. 计算真人手腕移动距离，这个是lp - lpt，即lpDelta
-             * 5. 计算模型手腕初始位置，这个是x1
-             * 6. 计算模型手腕最终位置，这个是x2
-             */
-
-            const lp = initialRightHandWristPosition.x - xrHeader.position.x;
-            // 对头部进行补偿，这是因为模型的头没变化。如果模型的头部实时变化，这里就不需要补偿了。但是如果直接修改headerPosition.x，那么模型的头部变化很奇怪。而且ratio也不能直接应用在头部x上，可能模型头部比例和头到手臂的比例不一样。
-            const lm = initialModalRightHandPosition.x - headerPosition.x; // - headerOffset * ratio);
-            const ratioX = Math.abs(lm / lp);
-            const ratioY = Math.abs((initialModalRightHandPosition.y - headerPosition.y) / (initialRightHandWristPosition.y - xrHeader.position.y));
-            const ratioZ = Math.abs((initialModalRightHandPosition.z - headerPosition.z) / (initialRightHandWristPosition.z - xrHeader.position.z));
-
-            const lpDeltaX = initialRightHandWristPosition.x - rightHandWristPosition.x; // + xrHeader.position.x - initialXrHeaderPosition.x;
-            const lpDeltaY = rightHandWristPosition.y - initialRightHandWristPosition.y; // y 轴方向相同，x轴相反
-            const lpDeltaZ = initialRightHandWristPosition.z - rightHandWristPosition.z;
-
-            // 因为向外伸展的时候是没办法获取到xr世界中手肘的位置的，所以ratio和向内不一样，0.9比较接近真实
-            bigBall.position.x = getAbsSmall(initialBigBallPosition.x + lpDeltaX * (lpDeltaX < 0 ? 0.9 : ratioX), initialModalRightHandPosition.x, initialXrHeaderPosition.x);
-            // bigBall.position.x = x2;
-            bigBall.position.y = initialBigBallPosition.y + lpDeltaY * 2;
-            bigBall.position.z = initialBigBallPosition.z + lpDeltaZ;
-            // setContent(`
-            //     camera: ${xrHeader.position.y}
-            //     人手初始：${initialRightHandWristPosition.y.toFixed(2)}
-            //     人手实时：${rightHandWristPosition.y.toFixed(2)}
-            //     模型手初始：${initialModalRightHandPosition.y.toFixed(2)}
-            //     模型头初始：${headerPosition.y.toFixed(2)}
-            //     ratioY: ${ratioY.toFixed(2)}
-            // `);
-            return;
+        setIk('left', {
+            rootMesh,
+            head,
         });
 
         // makePose(manager);
@@ -517,11 +612,6 @@ async function main() {
             bone['rightHand'].rotate(Axis.Y, 0, Space.WORLD); // 猜想只要设置两个轴，因为IK在运动的时候，会自动旋转一个轴。设置了Y旋转反而报错
             bone['rightHand'].rotate(Axis.X, wristEa.x, Space.WORLD);
             bone['rightHand'].rotate(Axis.Z, wristEa.z + Math.PI / 2, Space.WORLD);
-            setContent(`
-                x旋转角度: ${ToDegrees(wristEa.x).toFixed(2)}
-                y旋转角度: ${ToDegrees(-wristEa.y).toFixed(2)}
-                z旋转角度: ${ToDegrees(wristEa.z + Math.PI / 2).toFixed(2)}
-            `);
         }
         // 拇指
         {
