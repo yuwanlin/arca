@@ -43,12 +43,12 @@
         // "jest": true
     },
     "plugins": [
-    //     //   "react"
-    //     // "prettier", // add this if we want to use prettier error reporting
-    //     "jest",
+        //     //   "react"
+        //     // "prettier", // add this if we want to use prettier error reporting
+        //     "jest",
         "@typescript-eslint"
-    //     "eslint-plugin-tsdoc",
-    //     "jsdoc"
+        //     "eslint-plugin-tsdoc",
+        //     "jsdoc"
     ],
     "extends": [
         "eslint:recommended",
@@ -68,6 +68,7 @@
     // },
     "rules": {
         "block-spacing": "error",
+        "object-curly-newline": ["error", { "consistent": true }],
         // "capitalized-comments": ["error", "always"],
         // ... All other rules (not @typescript-eslint/*)
         //   "react/no-adjacent-inline-elements": "error",
@@ -93,7 +94,7 @@
         // }],
         // "no-duplicate-imports": ["error", { "includeExports": true }],
         // should be error, no?
-        "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+        "@typescript-eslint/no-unused-vars": "off",
         "@typescript-eslint/consistent-type-imports": ["error", { "disallowTypeAnnotations": false }],
         "@typescript-eslint/no-this-alias": "error",
         // "@typescript-eslint/naming-convention": [

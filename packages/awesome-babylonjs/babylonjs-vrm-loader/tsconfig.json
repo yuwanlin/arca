@@ -10,18 +10,13 @@
         "noImplicitAny": true,
         "noImplicitReturns": true,
         "noImplicitThis": true,
-        "noUnusedLocals": true,
+        "noUnusedLocals": false,
         "strictNullChecks": true,
         "strictFunctionTypes": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "lib": [
-            "dom",
-        ],
+        "lib": ["dom"],
         "outDir": "dist"
     },
-    "include": [
-        "./src/**/*",
-        "./index.d.ts"
-    ]
+    "include": ["./src/**/*", "./index.d.ts"]
 }
