@@ -183,32 +183,53 @@ async function main() {
         if (handedness === 'none') return;
         if (handedness === 'left') {
             leftHand = newHand;
-            fromBabylonObservable(scene.onBeforeRenderObservable)
-                .pipe(
-                    filter(() => {
-                        return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
-                    }),
-                    map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
-                    take(1)
-                )
-                .subscribe((v) => {
-                    initialPersonLeftHandWristPosition = v.clone();
-                });
+            // fromBabylonObservable(scene.onBeforeRenderObservable)
+            //     .pipe(
+            //         filter(() => {
+            //             return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
+            //         }),
+            //         map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
+            //         take(1)
+            //     )
+            //     .subscribe((v) => {
+            //         initialPersonLeftHandWristPosition = v.clone();
+            //     });
         } else {
             rightHand = newHand;
-            fromBabylonObservable(scene.onBeforeRenderObservable)
-                .pipe(
-                    filter(() => {
-                        return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
-                    }),
-                    map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
-                    take(1)
-                )
-                .subscribe((v) => {
-                    initialRightHandWristPosition = v.clone();
-                });
+            // fromBabylonObservable(scene.onBeforeRenderObservable)
+            //     .pipe(
+            //         filter(() => {
+            //             return newHand.getJointMesh(WebXRHandJoint.WRIST).position.x !== 0;
+            //         }),
+            //         map(() => newHand.getJointMesh(WebXRHandJoint.WRIST).position),
+            //         take(1)
+            //     )
+            //     .subscribe((v) => {
+            //         initialRightHandWristPosition = v.clone();
+            //     });
         }
     });
+
+    scene.onBeforeRenderObservable.add(() => {
+        if (leftHand && !initialPersonLeftHandWristPosition) {
+            // default is 0
+            const pos = leftHand.getJointMesh(WebXRHandJoint.WRIST).position;
+            if (pos.x !== 0) {
+                console.log('左边');
+                initialPersonLeftHandWristPosition = pos.clone();
+            }
+        }
+
+        if (rightHand && !initialRightHandWristPosition) {
+            // default is 0
+            const pos = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
+            if (pos.x !== 0) {
+                console.log('右边');
+                initialRightHandWristPosition = pos.clone();
+            }
+        }
+    });
+
     const gui = new dat.GUI();
     gui.domElement.style.marginTop = '100px';
     gui.domElement.style.marginRight = '300px';
@@ -225,8 +246,8 @@ async function main() {
         // TODO: camera的变化带来的变动需要处理
         const xrHeader = xr.baseExperience.camera;
         if (direction === 'right') {
-            const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.2 }, scene);
-            const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.12 }, scene);
+            const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.1 }, scene);
+            const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.05 }, scene);
             poleTargetSmallBall.position = new Vector3(0.47, 1.36, -0.07);
             let initialXrHeaderPosition: Vector3;
             const initialRightHand = scene.getTransformNodeByName('RightHand')!;
@@ -241,7 +262,7 @@ async function main() {
                 poleTargetMesh: poleTargetSmallBall,
                 // poleTargetLocalOffset: new Vector3(1, 1, 1),
                 poleAngle: Math.PI * 0.9,
-                // bendAxis: BABYLON.Vector3.Right(),
+                bendAxis: BABYLON.Vector3.Forward(),
                 maxAngle: Math.PI,
                 slerpAmount: 5,
             });
@@ -253,6 +274,7 @@ async function main() {
             const headerPosition = head.getAbsolutePosition();
             scene.onBeforeRenderObservable.add(() => {
                 ikCtl.update();
+
                 if (xrHeader.position.x === 0 && xrHeader.position.y === 0 && xrHeader.position.z === 0) {
                     return;
                 }
@@ -294,32 +316,44 @@ async function main() {
             });
         } else {
             const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.1 }, scene);
+            localAxes(0.5, scene).parent = bigBall;
             const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.05 }, scene);
-            poleTargetSmallBall.position = new Vector3(-0.47, 1.36, -0.07);
+            // poleTargetSmallBall.position = new Vector3(-0.47, 1.36, -0.07);
+            poleTargetSmallBall.position = new Vector3(-0.23, 1.44, 0.54);
             let initialXrHeaderPosition: Vector3;
             const initialModalHand = scene.getTransformNodeByName('LeftHand')!;
             const initialModalRightHandPosition = initialModalHand.getAbsolutePosition().clone();
 
             // @ts-ignore
 
+            bigBall.position = new Vector3(0.53, 1.62, 0.28);
             // bigBall.position = scene.getBoneByName('LeftForeArm')!.getAbsolutePosition().clone();
             // bigBall.position.x *= -1;
             // bigBall.position.z = -0.27;
-            bigBall.position = new Vector3(0.45, 1.39, -0.27);
+            // bigBall.position = new Vector3(0.45, 1.39, -0.27);
 
             const initialBigBallPosition = bigBall.position.clone();
-
+            console.log('坐标', scene.getBoneByName('LeftForeArm')!.position, scene.getBoneByName('LeftForeArm')!.getAbsolutePosition());
             const ikCtl = new BABYLON.BoneIKController(rootMesh, scene.getBoneByName('LeftForeArm')!, {
                 targetMesh: bigBall,
                 poleTargetMesh: poleTargetSmallBall,
                 // poleTargetLocalOffset: new Vector3(1, 1, 1),
                 poleAngle: Math.PI * 0.9,
-                // bendAxis: BABYLON.Vector3.Right(),
+                // bendAxis: new Vector3(-5, 2, -2),
+                // bendAxis: new Vector3(-1, 0, -1),
                 maxAngle: Math.PI,
             });
 
             gui.add(ikCtl, 'poleAngle', -Math.PI, Math.PI);
             gui.add(ikCtl, 'maxAngle', 0, Math.PI);
+            ikCtl.poleTargetLocalOffset;
+
+            // gui.add(ikCtl.poleTargetLocalOffset, 'x', -1, 1);
+            // gui.add(ikCtl.poleTargetLocalOffset, 'y', -1, 1);
+            // gui.add(ikCtl.poleTargetLocalOffset, 'z', -1, 1);
+
+            // gui.add(ikCtl, 'maxAngle', 0, Math.PI);
+
             // gui.add(ikCtl, 'bendAxis.x', 0, 1);
             // gui.add(ikCtl, 'bendAxis.y', 0, 1);
             // gui.add(ikCtl, 'bendAxis.z', 0, 1);
@@ -374,6 +408,8 @@ async function main() {
     xr.baseExperience.sessionManager.onXRSessionEnded.add(() => {});
     SceneLoader.AppendAsync('./', 'K-00510.vrm', scene).then((scene: Scene) => {
         const rootMesh = scene.getMeshByName('__root__')! as Mesh;
+        // @ts-ignore
+        window.rootMesh = rootMesh;
 
         // 手肘
         // const initialRightHand = scene.getTransformNodeByName('RightHand')!;
@@ -383,12 +419,8 @@ async function main() {
 
         let initialXrHeaderPosition: Vector3;
 
-        // setIk('right', {
-        //     rootMesh,
-        //     head,
-        // });
-
-        setIk('left', {
+        // left right
+        setIk('right', {
             rootMesh,
             head,
         });
@@ -671,174 +703,6 @@ async function main() {
             makeRightHandSync(rightHand);
         }
     });
-
-    function addUI(manager: VRMManager) {
-        const advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI');
-        advancedTexture.layer!.layerMask = 2;
-        // Matrix
-
-        const panel3 = new StackPanel();
-        panel3.width = '220px';
-        panel3.fontSize = '14px';
-        panel3.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-        panel3.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-        advancedTexture.addControl(panel3);
-
-        function addSlider(text: string, callback: (value: number) => void, defaultValue = 0) {
-            const header = new TextBlock();
-            header.text = text;
-            header.height = '40px';
-            header.color = 'white';
-            header.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-            panel3.addControl(header);
-
-            const slider = new Slider();
-            slider.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-            slider.minimum = 0;
-            slider.maximum = 1;
-            slider.color = 'green';
-            slider.value = defaultValue;
-            slider.height = '20px';
-            slider.width = '200px';
-            slider.onValueChangedObservable.add(callback);
-            callback(defaultValue);
-            panel3.addControl(slider);
-        }
-
-        addSlider(
-            'Joy:',
-            (num) => {
-                manager.morphingPreset('joy', num);
-            },
-            1
-        );
-        addSlider('Angry:', (num) => {
-            manager.morphingPreset('angry', num);
-        });
-        addSlider('Sorrow:', (num) => {
-            manager.morphingPreset('sorrow', num);
-        });
-        addSlider('Fun:', (num) => {
-            manager.morphingPreset('fun', num);
-        });
-        addSlider('Blink:', (num) => {
-            manager.morphingPreset('blink', num);
-        });
-        addSlider(
-            'A:',
-            (num) => {
-                manager.morphingPreset('a', num);
-            },
-            1
-        );
-        addSlider('I:', (num) => {
-            manager.morphingPreset('i', num);
-        });
-        addSlider('U:', (num) => {
-            manager.morphingPreset('u', num);
-        });
-        addSlider('E:', (num) => {
-            manager.morphingPreset('e', num);
-        });
-        addSlider('O:', (num) => {
-            manager.morphingPreset('o', num);
-        });
-    }
-
-    function makePose(manager: VRMManager) {
-        /**
-         * hips: 臀部
-         * spine: 脊柱
-         * upperChest: 上胸部
-         * neck: 脖子
-         */
-        const poses = {
-            hips: Quaternion.FromEulerAngles(0, 0, 0),
-            spine: Quaternion.FromEulerAngles(-Math.PI / 20, Math.PI / 20, 0),
-            chest: Quaternion.FromEulerAngles(0, 0, 0),
-            upperChest: Quaternion.FromEulerAngles(0, 0, 0),
-            neck: Quaternion.FromEulerAngles(0, 0, 0),
-            head: Quaternion.FromEulerAngles(0, 0, -Math.PI / 30),
-            leftEye: Quaternion.FromEulerAngles(0, 0, 0),
-            // leftShoulder: Quaternion.FromEulerAngles(0, 0, Math.PI / 4),
-            leftShoulder: Quaternion.FromEulerAngles(0, 0, 0),
-
-            leftUpperArm: Quaternion.FromEulerAngles(0, 0, 0),
-            // leftLowerArm: Quaternion.FromEulerAngles(0, 0, Math.PI / 4),
-            leftLowerArm: Quaternion.FromEulerAngles(0, 0, 0),
-            leftHand: Quaternion.FromEulerAngles(0, 0, 0),
-
-            leftThumbProximal: Quaternion.FromEulerAngles(0, 0, 0), // 2
-            leftThumbIntermediate: Quaternion.FromEulerAngles(0, 0, 0), // 3
-            leftThumbDistal: Quaternion.FromEulerAngles(0, 0, 0), // 4
-
-            leftIndexProximal: Quaternion.FromEulerAngles(0, 0, 0), // 6
-            leftIndexIntermediate: Quaternion.FromEulerAngles(0, 0, 0), // 7
-            leftIndexDistal: Quaternion.FromEulerAngles(0, 0, 0), // 8
-
-            leftMiddleProximal: Quaternion.FromEulerAngles(0, 0, 0), // 11
-            leftMiddleIntermediate: Quaternion.FromEulerAngles(0, 0, 0), // 12
-            leftMiddleDistal: Quaternion.FromEulerAngles(0, 0, 0), // 13
-
-            leftRingProximal: Quaternion.FromEulerAngles(0, 0, 0), // 16
-            leftRingIntermediate: Quaternion.FromEulerAngles(0, 0, 0), // 17
-            leftRingDistal: Quaternion.FromEulerAngles(0, 0, 0), // 18
-
-            leftLittleProximal: Quaternion.FromEulerAngles(0, 0, 0), // 21
-            leftLittleIntermediate: Quaternion.FromEulerAngles(0, 0, 0), // 22
-            leftLittleDistal: Quaternion.FromEulerAngles(0, 0, 0), // 23
-
-            leftUpperLeg: Quaternion.FromEulerAngles(0, 0, 0),
-            leftLowerLeg: Quaternion.FromEulerAngles(0, 0, 0),
-            leftFoot: Quaternion.FromEulerAngles(0, 0, 0),
-
-            // 脚趾
-            leftToe: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightEye: Quaternion.FromEulerAngles(0, 0, 0),
-            rightShoulder: Quaternion.FromEulerAngles(0, Math.PI / 6, 0),
-
-            rightUpperArm: Quaternion.FromEulerAngles(0, 0, 0),
-            rightLowerArm: Quaternion.FromEulerAngles(0, Math.PI / 8, 0),
-
-            rightHand: Quaternion.FromEulerAngles(0, 0, Math.PI / 2),
-
-            rightThumbProximal: Quaternion.FromEulerAngles(-Math.PI / 8, -Math.PI / 4, 0),
-            rightThumbIntermediate: Quaternion.FromEulerAngles(-Math.PI / 4, 0, 0),
-            rightThumbDistal: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightIndexProximal: Quaternion.FromEulerAngles(0, Math.PI / 12, 0),
-            rightIndexIntermediate: Quaternion.FromEulerAngles(0, 0, 0),
-            rightIndexDistal: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightMiddleProximal: Quaternion.FromEulerAngles(0, -Math.PI / 12, 0),
-            rightMiddleIntermediate: Quaternion.FromEulerAngles(0, 0, 0),
-            rightMiddleDistal: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightRingProximal: Quaternion.FromEulerAngles(0, 0, -Math.PI / 2),
-            rightRingIntermediate: Quaternion.FromEulerAngles(0, 0, -Math.PI / 2),
-            rightRingDistal: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightLittleProximal: Quaternion.FromEulerAngles(0, 0, -Math.PI / 2),
-            rightLittleIntermediate: Quaternion.FromEulerAngles(0, 0, -Math.PI / 2),
-            rightLittleDistal: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightUpperLeg: Quaternion.FromEulerAngles(0, 0, 0),
-            rightLowerLeg: Quaternion.FromEulerAngles(0, 0, 0),
-            rightFoot: Quaternion.FromEulerAngles(0, 0, 0),
-
-            rightToe: Quaternion.FromEulerAngles(0, 0, 0),
-        };
-
-        Object.keys(poses).forEach((boneName) => {
-            // @ts-ignore
-            if (!manager.humanoidBone[boneName]) {
-                return;
-            }
-            // @ts-ignore
-            manager.humanoidBone[boneName].rotationQuaternion = poses[boneName];
-        });
-    }
 }
 
 interface DebugProperties {
