@@ -428,24 +428,80 @@ async function main() {
     }
 
     xr.baseExperience.sessionManager.onXRSessionEnded.add(() => {});
-    SceneLoader.AppendAsync('./', 'K-00510.vrm', scene).then((scene: Scene) => {
-        const rootMesh = scene.getMeshByName('__root__')! as Mesh;
-        // @ts-ignore
-        window.rootMesh = rootMesh;
-        // @ts-ignore
-        window.scene = scene;
-        // 头
-        const head = scene.getTransformNodeByName('Head')!;
+    // SceneLoader.AppendAsync('./', 'K-00510.vrm', scene).then((scene: Scene) => {
+    //     const rootMesh = scene.getMeshByName('__root__')! as Mesh;
+    //     // @ts-ignore
+    //     window.rootMesh = rootMesh;
+    //     // @ts-ignore
+    //     window.scene = scene;
+    //     // 头
+    //     const head = scene.getTransformNodeByName('Head')!;
 
-        let initialXrHeaderPosition: Vector3;
+    //     let initialXrHeaderPosition: Vector3;
 
-        // left right
-        setIk('right', {
-            rootMesh,
-            head,
+    //     // left right
+    //     setIk('right', {
+    //         rootMesh,
+    //         head,
+    //     });
+
+    //     // makePose(manager);
+    // });
+
+    var target = BABYLON.MeshBuilder.CreateSphere('', { diameter: 5 }, scene);
+    var poleTarget = BABYLON.MeshBuilder.CreateSphere('', { diameter: 2.5 }, scene);
+
+    SceneLoader.ImportMesh('', './', 'Dude.babylon', scene, function (newMeshes, particleSystems, skeletons) {
+        var mesh = newMeshes[0] as Mesh;
+        // mesh.rotate(Axis.Y, Math.PI, Space.WORLD);
+        var skeleton = skeletons[0];
+        mesh.scaling = new BABYLON.Vector3(0.02, 0.02, 0.02);
+        mesh.position = new BABYLON.Vector3(0, 0, 0);
+
+        // var animation = scene.beginAnimation(skeletons[0], 0, 100, true, 1.0);
+
+        var t = 0;
+
+        poleTarget.position.x = 0;
+        poleTarget.position.y = 100;
+        poleTarget.position.z = -50;
+
+        target.parent = mesh;
+        poleTarget.parent = mesh;
+
+        var ikCtl = new BABYLON.BoneIKController(mesh, skeleton.bones[14], { targetMesh: target, poleTargetMesh: poleTarget, poleAngle: Math.PI });
+
+        ikCtl.maxAngle = Math.PI * 0.9;
+
+        var bone1AxesViewer = new BABYLON.BoneAxesViewer(scene, skeleton.bones[14], mesh);
+        var bone2AxesViewer = new BABYLON.BoneAxesViewer(scene, skeleton.bones[13], mesh);
+        bone1AxesViewer.scaleLines = 0.2;
+        bone2AxesViewer.scaleLines = 0.2;
+
+        gui.add(ikCtl, 'poleAngle', -Math.PI, Math.PI);
+        gui.add(ikCtl, 'maxAngle', 0, Math.PI);
+        gui.add(poleTarget.position, 'x', -100, 100).name('pole target x');
+        gui.add(poleTarget.position, 'y', -100, 100).name('pole target y');
+        gui.add(poleTarget.position, 'z', -100, 100).name('pole target z');
+
+        scene.registerBeforeRender(function () {
+            var bone = skeleton.bones[14];
+
+            t += 0.03;
+
+            // var dist = 2 + 12 * Math.sin(t);
+
+            target.position.x = 20;
+            target.position.y = 40 + 40 * Math.sin(t);
+            target.position.z = -30 + 40 * Math.cos(t);
+
+            ikCtl.update();
+
+            //mesh.rotation.y += .01;
+
+            bone1AxesViewer.update();
+            bone2AxesViewer.update();
         });
-
-        // makePose(manager);
     });
 
     function getAbsSmall(v1: number, v2: number, base: number) {
@@ -485,7 +541,7 @@ async function main() {
         button.position.z = 2;
         button.position.y = 0.5;
         button.scaling = new Vector3(0.5, 0.5, 0.5);
-        button.mesh!.rotation.y = Math.PI;
+        // button.mesh!.rotation.y = Math.PI;
 
         const setContent = (text2: string) => {
             text1.text = text2;
