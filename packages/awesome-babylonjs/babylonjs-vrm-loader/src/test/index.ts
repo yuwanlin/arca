@@ -161,7 +161,7 @@ async function main() {
 
     let leftHand: WebXRHand;
     let rightHand: WebXRHand;
-    let initialRightHandWristPosition: Vector3;
+    let initialPersonRightHandWristPosition: Vector3;
     let initialPersonLeftHandWristPosition: Vector3;
 
     // @ts-ignore
@@ -205,7 +205,7 @@ async function main() {
             //         take(1)
             //     )
             //     .subscribe((v) => {
-            //         initialRightHandWristPosition = v.clone();
+            //         initialPersonRightHandWristPosition = v.clone();
             //     });
         }
     });
@@ -220,12 +220,12 @@ async function main() {
             }
         }
 
-        if (rightHand && !initialRightHandWristPosition) {
+        if (rightHand && !initialPersonRightHandWristPosition) {
             // default is 0
             const pos = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
             if (pos.x !== 0) {
                 console.log('右边');
-                initialRightHandWristPosition = pos.clone();
+                initialPersonRightHandWristPosition = pos.clone();
             }
         }
     });
@@ -250,13 +250,16 @@ async function main() {
             const poleTargetSmallBall = BABYLON.MeshBuilder.CreateSphere('poleMesh', { diameter: 0.05 }, scene);
             poleTargetSmallBall.position = new Vector3(0.47, 1.36, -0.07);
             let initialXrHeaderPosition: Vector3;
-            const initialRightHand = scene.getTransformNodeByName('RightHand')!;
-            const initialModalRightHandPosition = initialRightHand.getAbsolutePosition().clone();
+
+            const initialModalRightHand = scene.getTransformNodeByName('RightHand')!;
+            const initialModalLeftHand = scene.getTransformNodeByName('LeftHand')!;
+
+            const initialModalRightHandPosition = initialModalRightHand.getAbsolutePosition().clone();
+            const initialModalLeftHandPosition = initialModalLeftHand.getAbsolutePosition().clone();
 
             bigBall.position = new Vector3(-0.45, 1.39, -0.27);
             const initialBigBallPosition = bigBall.position.clone();
-            console.log('===============', bigBall.position);
-
+            localAxes(0.5, scene).parent = head;
             const ikCtl = new BABYLON.BoneIKController(rootMesh, scene.getBoneByName('RightForeArm')!, {
                 targetMesh: bigBall,
                 poleTargetMesh: poleTargetSmallBall,
@@ -281,12 +284,24 @@ async function main() {
                 if (!initialXrHeaderPosition) {
                     initialXrHeaderPosition = xrHeader.position.clone();
                 }
-                if (!initialRightHandWristPosition) return;
+                if (!initialPersonRightHandWristPosition) return;
+
+                /**
+                 * 人的左右手初始位置决定人和模型世界坐标x轴方向。
+                 * 如果xl > xr,说明X轴朝左边，旋转了模型，这时候人和模型同一方向， isModalForward是true
+                 * 如果xl < xr,说明X轴朝右边，默认方向，这时候人和模型相对， isModalForward是false
+                 */
+
+                let isModalForward = false;
+                if (initialPersonLeftHandWristPosition?.x > initialPersonRightHandWristPosition?.x) {
+                    // xr空间中，需要同时加入双手才检测到手部位置信息
+                    isModalForward = true;
+                }
 
                 const headerOffset = xrHeader.position.x - initialXrHeaderPosition.x;
                 // head.position.x = initialModalHeaderPosition.x + headerOffset * ratio;
 
-                const rightHandWristPosition = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
+                const personRightHandWristPosition = rightHand.getJointMesh(WebXRHandJoint.WRIST).position;
 
                 /**
                  * 1. 计算真人初始手腕位置与头部位置的距离，这是个总距离 lp
@@ -297,22 +312,29 @@ async function main() {
                  * 6. 计算模型手腕最终位置，这个是x2
                  */
 
-                const lp = initialRightHandWristPosition.x - xrHeader.position.x;
+                const lp = initialPersonRightHandWristPosition.x - xrHeader.position.x;
                 // 对头部进行补偿，这是因为模型的头没变化。如果模型的头部实时变化，这里就不需要补偿了。但是如果直接修改headerPosition.x，那么模型的头部变化很奇怪。而且ratio也不能直接应用在头部x上，可能模型头部比例和头到手臂的比例不一样。
-                const lm = initialModalRightHandPosition.x - headerPosition.x; // - headerOffset * ratio);
+                const lm = initialBigBallPosition.x - headerPosition.x; // - headerOffset * ratio);
                 const ratioX = Math.abs(lm / lp);
-                const ratioY = Math.abs((initialModalRightHandPosition.y - headerPosition.y) / (initialRightHandWristPosition.y - xrHeader.position.y));
-                const ratioZ = Math.abs((initialModalRightHandPosition.z - headerPosition.z) / (initialRightHandWristPosition.z - xrHeader.position.z));
 
-                const lpDeltaX = initialRightHandWristPosition.x - rightHandWristPosition.x; // + xrHeader.position.x - initialXrHeaderPosition.x;
-                const lpDeltaY = rightHandWristPosition.y - initialRightHandWristPosition.y; // y 轴方向相同，x轴相反
-                const lpDeltaZ = initialRightHandWristPosition.z - rightHandWristPosition.z;
+                const lpDeltaX = initialPersonRightHandWristPosition.x - personRightHandWristPosition.x; // + xrHeader.position.x - initialXrHeaderPosition.x;
+                const lpDeltaY = personRightHandWristPosition.y - initialPersonRightHandWristPosition.y; // y 轴方向相同，x轴相反
+                const lpDeltaZ = initialPersonRightHandWristPosition.z - personRightHandWristPosition.z;
 
-                // 因为向外伸展的时候是没办法获取到xr世界中手肘的位置的，所以ratio和向内不一样，0.9比较接近真实
-                bigBall.position.x = getAbsSmall(initialBigBallPosition.x + lpDeltaX * (lpDeltaX < 0 ? 0.9 : ratioX), initialModalRightHandPosition.x, initialXrHeaderPosition.x);
-                // bigBall.position.x = x2;
+                // 向外伸展的时候实际的比例是模型手腕到手肘的举例和真人比例。但是真人没办法获取到xr世界中手肘的位置的，所以ratio和向内不一样，0.9比较接近真实。
+                // isModalForward为true，向外lpDeltaX是大于0的。isModalForward为false，向外lpDeltaX是小于0的。
+                bigBall.position.x = getAbsSmall(
+                    initialBigBallPosition.x + lpDeltaX * ((lpDeltaX < 0 && !isModalForward) || (lpDeltaX > 0 && isModalForward) ? 0.9 : ratioX) * (isModalForward ? -1 : 1),
+                    initialModalRightHandPosition.x,
+                    initialXrHeaderPosition.x
+                );
                 bigBall.position.y = initialBigBallPosition.y + lpDeltaY * 2;
-                bigBall.position.z = initialBigBallPosition.z + lpDeltaZ;
+                bigBall.position.z = initialBigBallPosition.z + lpDeltaZ * (isModalForward ? -1 : 1);
+
+                setContent(`
+                    lpDeltaX: ${lpDeltaX},
+                    isModalForward: ${isModalForward},
+                `);
             });
         } else {
             const bigBall = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.1 }, scene);
@@ -410,10 +432,8 @@ async function main() {
         const rootMesh = scene.getMeshByName('__root__')! as Mesh;
         // @ts-ignore
         window.rootMesh = rootMesh;
-
-        // 手肘
-        // const initialRightHand = scene.getTransformNodeByName('RightHand')!;
-        // const initialModalRightHandPosition = initialRightHand.getAbsolutePosition().clone();
+        // @ts-ignore
+        window.scene = scene;
         // 头
         const head = scene.getTransformNodeByName('Head')!;
 
@@ -465,6 +485,7 @@ async function main() {
         button.position.z = 2;
         button.position.y = 0.5;
         button.scaling = new Vector3(0.5, 0.5, 0.5);
+        button.mesh!.rotation.y = Math.PI;
 
         const setContent = (text2: string) => {
             text1.text = text2;
