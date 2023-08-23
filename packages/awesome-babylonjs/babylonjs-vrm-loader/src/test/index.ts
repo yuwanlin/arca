@@ -454,6 +454,8 @@ async function main() {
 
     // var target = BABYLON.MeshBuilder.CreateSphere('targetMesh', { diameter: 0.1 }, scene);
     // var poleTarget = BABYLON.MeshBuilder.CreateSphere('poleTarget', { diameter: 0.05 }, scene);
+    let initialRightHandRotationQuaternion: Quaternion;
+    let initialLeftHandRotationQuaternion: Quaternion;
 
     SceneLoader.ImportMesh('', './', 'Dude.babylon', scene, function (newMeshes, particleSystems, skeletons) {
         var mesh = newMeshes[0] as Mesh;
@@ -462,13 +464,18 @@ async function main() {
         mesh.scaling = new BABYLON.Vector3(0.02, 0.02, 0.02);
         mesh.position = new BABYLON.Vector3(0, 0, 0);
 
-        // var animation = scene.beginAnimation(skeletons[0], 0, 100, true, 1.0);
+        const rightWrist = skeleton.bones[15];
+        const leftWrist = skeleton.bones[34];
 
-        var t = 0;
+        initialRightHandRotationQuaternion = rightWrist.rotationQuaternion.clone();
+        initialLeftHandRotationQuaternion = leftWrist.rotationQuaternion.clone();
 
-        // poleTarget.position.x = 0;
-        // poleTarget.position.y = 2;
-        // poleTarget.position.z = -1;
+        // scene.onBeforeRenderObservable.add(() => {
+        // rightWrist.rotationQuaternion = initialRightHandRotationQuaternion;
+        // rightWrist.rotate(Axis.Y, Math.PI / 2, Space.WORLD, mesh);
+        // });
+
+        console.log('=====', initialLeftHandRotationQuaternion.toEulerAngles(), initialRightHandRotationQuaternion.toEulerAngles());
 
         const rootMesh = mesh;
 
@@ -480,7 +487,7 @@ async function main() {
          * 34 - leftHandWrist
          * 35 - 左手大拇指第一个关节
          */
-        var headAxesViewer = new BABYLON.BoneAxesViewer(scene, skeleton.bones[35], mesh);
+        var headAxesViewer = new BABYLON.BoneAxesViewer(scene, skeleton.bones[34], mesh);
 
         // skeleton.bones.forEach((bone, index) => {
         //     console.log(`骨头${index}位置`, bone);
@@ -491,17 +498,17 @@ async function main() {
             headAxesViewer.update();
         });
 
-        // setIk('left', {
-        //     rootMesh,
-        //     head: skeleton.bones[7],
-        //     scale: 0.02,
-        // });
-
-        setIk('right', {
+        setIk('left', {
             rootMesh,
             head: skeleton.bones[7],
             scale: 0.02,
         });
+
+        // setIk('right', {
+        //     rootMesh,
+        //     head: skeleton.bones[7],
+        //     scale: 0.02,
+        // });
 
         return;
 
@@ -662,7 +669,9 @@ async function main() {
     }
 
     function makeLeftHandSync(hand: WebXRHand) {
-        const bone = scene.metadata.vrmManagers[0].humanoidBone;
+        const bone = {
+            leftHand: scene.getBoneByName('bone34')!,
+        };
         const {
             wristMesh0,
             thumb1,
@@ -694,39 +703,42 @@ async function main() {
         const wristEa = wristMesh0.rotationQuaternion?.toEulerAngles()!;
         // 手腕
         {
-            bone['leftHand'].rotationQuaternion = Quaternion.FromEulerAngles(wristEa.z, -wristEa.y, wristEa.x);
+            bone['leftHand'].rotationQuaternion = initialLeftHandRotationQuaternion;
+            bone['leftHand'].rotate(Axis.Y, wristEa.y, Space.WORLD);
+            bone['leftHand'].rotate(Axis.X, wristEa.x, Space.WORLD);
+            bone['leftHand'].rotate(Axis.Z, wristEa.z, Space.WORLD);
         }
         // 拇指
-        {
-            setModalJointYAxis(bone['leftThumbProximal'], [thumb1, wristMesh0, thumb2], 'left');
-            setModalJointYAxis(bone['leftThumbIntermediate'], [thumb2, thumb1, thumb3], 'left');
-            setModalJointYAxis(bone['leftThumbDistal'], [thumb3, thumb2, thumb4], 'left');
-        }
-        // 食指
-        {
-            setModalJointZAxis(bone['leftIndexProximal'], [index6, index5, index7], 'left');
-            setModalJointZAxis(bone['leftIndexIntermediate'], [index7, index6, index8], 'left');
-            setModalJointZAxis(bone['leftIndexDistal'], [index8, index7, index9], 'left');
-        }
+        // {
+        //     setModalJointYAxis(bone['leftThumbProximal'], [thumb1, wristMesh0, thumb2], 'left');
+        //     setModalJointYAxis(bone['leftThumbIntermediate'], [thumb2, thumb1, thumb3], 'left');
+        //     setModalJointYAxis(bone['leftThumbDistal'], [thumb3, thumb2, thumb4], 'left');
+        // }
+        // // 食指
+        // {
+        //     setModalJointZAxis(bone['leftIndexProximal'], [index6, index5, index7], 'left');
+        //     setModalJointZAxis(bone['leftIndexIntermediate'], [index7, index6, index8], 'left');
+        //     setModalJointZAxis(bone['leftIndexDistal'], [index8, index7, index9], 'left');
+        // }
 
-        // 中指
-        {
-            setModalJointZAxis(bone['leftMiddleProximal'], [middle11, middle10, middle12], 'left');
-            setModalJointZAxis(bone['leftMiddleIntermediate'], [middle12, middle11, middle13], 'left');
-            setModalJointZAxis(bone['leftMiddleDistal'], [middle13, middle12, middle14], 'left');
-        }
-        // 无名指
-        {
-            setModalJointZAxis(bone['leftRingProximal'], [ring16, ring15, ring17], 'left');
-            setModalJointZAxis(bone['leftRingIntermediate'], [ring17, ring16, ring18], 'left');
-            setModalJointZAxis(bone['leftRingDistal'], [ring18, ring17, ring19], 'left');
-        }
-        // 小指
-        {
-            setModalJointZAxis(bone['leftLittleProximal'], [little21, little20, little22], 'left');
-            setModalJointZAxis(bone['leftLittleIntermediate'], [little22, little21, little23], 'left');
-            setModalJointZAxis(bone['leftLittleDistal'], [little23, little22, little24], 'left');
-        }
+        // // 中指
+        // {
+        //     setModalJointZAxis(bone['leftMiddleProximal'], [middle11, middle10, middle12], 'left');
+        //     setModalJointZAxis(bone['leftMiddleIntermediate'], [middle12, middle11, middle13], 'left');
+        //     setModalJointZAxis(bone['leftMiddleDistal'], [middle13, middle12, middle14], 'left');
+        // }
+        // // 无名指
+        // {
+        //     setModalJointZAxis(bone['leftRingProximal'], [ring16, ring15, ring17], 'left');
+        //     setModalJointZAxis(bone['leftRingIntermediate'], [ring17, ring16, ring18], 'left');
+        //     setModalJointZAxis(bone['leftRingDistal'], [ring18, ring17, ring19], 'left');
+        // }
+        // // 小指
+        // {
+        //     setModalJointZAxis(bone['leftLittleProximal'], [little21, little20, little22], 'left');
+        //     setModalJointZAxis(bone['leftLittleIntermediate'], [little22, little21, little23], 'left');
+        //     setModalJointZAxis(bone['leftLittleDistal'], [little23, little22, little24], 'left');
+        // }
     }
 
     function makeRightHandSync(hand: WebXRHand) {
@@ -765,11 +777,10 @@ async function main() {
         const wristEa = wristMesh0.rotationQuaternion?.toEulerAngles()!;
         // // 手腕
         {
-            // @ts-ignore
-            // bone['rightHand'].rotationQuaternion = Quaternion.FromEulerAngles(0, 0, 0);
-            // bone['rightHand'].rotate(Axis.Y, 0, Space.WORLD); // 猜想只要设置两个轴，因为IK在运动的时候，会自动旋转一个轴。设置了Y旋转反而报错
-            // bone['rightHand'].rotate(Axis.X, wristEa.x, Space.WORLD);
-            // bone['rightHand'].rotate(Axis.Z, wristEa.z + Math.PI / 2, Space.WORLD);
+            bone['rightHand'].rotationQuaternion = initialRightHandRotationQuaternion;
+            bone['rightHand'].rotate(Axis.Y, wristEa.y, Space.WORLD);
+            bone['rightHand'].rotate(Axis.X, wristEa.x, Space.WORLD);
+            bone['rightHand'].rotate(Axis.Z, wristEa.z, Space.WORLD);
         }
         // // 拇指
         // {
@@ -823,7 +834,7 @@ async function main() {
         // if (!leftHand || !rightHand) return;
 
         if (leftHand) {
-            // makeLeftHandSync(leftHand);
+            makeLeftHandSync(leftHand);
         }
         if (rightHand) {
             makeRightHandSync(rightHand);
